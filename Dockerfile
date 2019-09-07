@@ -1,4 +1,5 @@
-FROM debian:jessie
+#FROM debian:jessie
+FROM ubuntu:18.04
 
 LABEL maintainer="Linagora Folks <lgs-openpaas-dev@linagora.com>"
 LABEL description="Provides an image with Janus Gateway"
@@ -10,7 +11,6 @@ RUN apt-get install -y \
     build-essential \
     libmicrohttpd-dev \
     libjansson-dev \
-    libnice-dev \
     libssl-dev \
     libsofia-sip-ua-dev \
     libglib2.0-dev \
@@ -22,7 +22,8 @@ RUN apt-get install -y \
     gengetopt \
     libtool \
     autotools-dev \
-    automake
+    automake \
+    gtk-doc-tools
 
 RUN apt-get install -y \
     sudo \
@@ -30,12 +31,13 @@ RUN apt-get install -y \
     git \
     doxygen \
     graphviz \
+    libconfig-dev \
     cmake
 
 RUN cd ~ \
     && git clone https://github.com/cisco/libsrtp.git \
     && cd libsrtp \
-    && git checkout v2.0.0 \
+    && git checkout v2.2.0 \
     && ./configure --prefix=/usr --enable-openssl \
     && make shared_library \
     && sudo make install
@@ -51,30 +53,37 @@ RUN cd ~ \
 RUN cd ~ \
     && git clone https://github.com/warmcat/libwebsockets.git \
     && cd libwebsockets \
-    && git checkout v2.1.0 \
+    && git checkout v3.2.0 \
     && mkdir build \
     && cd build \
-    && cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr .. \
+    && cmake -DLWS_MAX_SMP=1 -DCMAKE_INSTALL_PREFIX:PATH=/usr .. \
     && make \
     && sudo make install
 
+RUN apt-get remove -y libnice-dev \
+    && cd /tmp && rm -rf libnice && git clone https://github.com/libnice/libnice.git && cd libnice \
+    && git checkout 0.1.16 \
+    && ./autogen.sh --disable-gtk-doc \
+    && ./configure \
+    && make \
+    && make install
+
+# --enable-docs
 RUN cd ~ \
     && git clone https://github.com/meetecho/janus-gateway.git \
     && cd janus-gateway \
+    && git checkout v0.7.4 \
     && sh autogen.sh \
-    && ./configure --prefix=/opt/janus --disable-rabbitmq --disable-mqtt --enable-docs \
+    && ./configure --prefix=/opt/janus --disable-rabbitmq --disable-mqtt \
     && make CFLAGS='-std=c99' \
     && make install \
     && make configs
 
-RUN cp -rp ~/janus-gateway/certs /opt/janus/share/janus
+#RUN cp -rp ~/janus-gateway/certs /opt/janus/share/janus
 
 COPY conf/*.cfg /opt/janus/etc/janus/
 
 RUN apt-get install nginx -y
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
-
-EXPOSE 80 7088 8088 8188 8089
-EXPOSE 10000-10200/udp
 
 CMD service nginx restart && /opt/janus/bin/janus --nat-1-1=${DOCKER_IP}
